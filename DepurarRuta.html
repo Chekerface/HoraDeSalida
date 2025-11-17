@@ -1,0 +1,324 @@
+// Este es el html que he estado utilizando para ver que rutas estaba devolviendo y que datos estaba estrayendo:
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Next transit arrival — Train filter example</title>
+  <style>
+    html,body,#map { height: 100%; margin: 0; padding: 0; }
+    #panel {
+      position: absolute; top: 8px; left: 8px; z-index: 5;
+      background: rgba(255,255,255,0.97); padding: 10px; border-radius: 6px;
+      max-width: 520px; font-family: Arial, sans-serif; font-size: 13px;
+    }
+    pre { white-space: pre-wrap; word-wrap: break-word; max-height: 300px; overflow: auto; }
+    button { margin-left: 6px; }
+    .muted { color: #555; font-size: 12px; }
+    .mode { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <b>Next transit arrival (departure = now)</b>
+    <p>
+      Origin: <code>La Colina (36.6419165, -4.4926464)</code><br>
+      Destination: <code>Málaga María Zambrano (36.7193, -4.4174)</code>
+    </p>
+
+    <div class="mode">
+      <b>Filter mode:</b><br/>
+      <label><input type="radio" name="filter" value="all" checked> <b>All</b> (no filter)</label><br/>
+      <label><input type="radio" name="filter" value="lenient"> <b>Lenient</b> (first transit step must be train)</label><br/>
+      <label><input type="radio" name="filter" value="strict"> <b>Strict</b> (every transit step must be train)</label>
+      <div class="muted">Tip: choose <b>Lenient</b> if you allow short feeder bus/walk to a train station.</div>
+    </div>
+
+    <p>
+      <button id="goNow">Get next transit</button>
+      <button id="showAll">Show last full response</button>
+    </p>
+
+    <div>
+      <b>Selected route (next departure):</b>
+      <div id="selected">No query yet.</div>
+    </div>
+
+    <b>Full result or filtered view (JSON-like):</b>
+    <pre id="result">No result yet.</pre>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    const ORIGIN = { lat: 36.636341, lng: -4.493076}; 
+    const DESTINATION = { lat: 36.628133, lng: -4.500454 }; 
+
+    let map, directionsService, directionsRenderer, lastResult;
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        center: ORIGIN,
+        zoom: 13
+      });
+
+      directionsService = new google.maps.DirectionsService();
+      directionsRenderer = new google.maps.DirectionsRenderer({ map });
+
+      document.getElementById('goNow').addEventListener('click', queryNow);
+      document.getElementById('showAll').addEventListener('click', () => {
+        if (lastResult) dumpFullResult(lastResult);
+        else alert('Run a query first.');
+      });
+
+      // Auto-run on load
+      queryNow();
+    }
+
+    function getSelectedFilterMode() {
+      const radios = document.getElementsByName('filter');
+      for (const r of radios) if (r.checked) return r.value;
+      return 'all';
+    }
+
+    function queryNow() {
+      const departureDate = new Date(); // NOW
+      const request = {
+        origin: ORIGIN,
+        destination: DESTINATION,
+        travelMode: google.maps.TravelMode.TRANSIT,
+        transitOptions: { departureTime: departureDate },
+        provideRouteAlternatives: true
+      };
+
+      directionsService.route(request, (result, status) => {
+        if (status !== google.maps.DirectionsStatus.OK) {
+          console.error('Directions request failed:', status);
+          document.getElementById('result').textContent = 'Error: ' + status;
+          document.getElementById('selected').textContent = 'No route returned.';
+          return;
+        }
+
+        lastResult = result;
+        // Filter according to the selected mode and show filtered view
+        const mode = getSelectedFilterMode(); // 'all' | 'lenient' | 'strict'
+        let filtered = result;
+        if (mode === 'all') {
+          // display full result (safe-serialized)
+          document.getElementById('result').textContent = JSON.stringify(result, replacer, 2);
+        } else {
+          // Build a filtered DirectionsResult view containing only matching routes
+          filtered = buildFilteredResult(result, mode);
+          document.getElementById('result').textContent = JSON.stringify(filtered, replacer, 2);
+        }
+
+        // Choose the next departure route according to the same mode (select earliest matching)
+        const chosenIndex = chooseNextTrainRouteIndex(result, departureDate, mode);
+        if (chosenIndex === -1) {
+          document.getElementById('selected').textContent = 'No matching transit route with departure_time found for chosen filter mode.';
+          // still render full directions as fallback (optional)
+          directionsRenderer.setDirections(result);
+        } else {
+          // Render original result then set route index
+          directionsRenderer.setDirections(result);
+          directionsRenderer.setRouteIndex(chosenIndex);
+          showSelectedInfo(result.routes[chosenIndex], departureDate, mode);
+        }
+      });
+    }
+
+    // -------------------- Matching / Normalization helpers --------------------
+
+    // Normalize strings for matching (lowercase and remove accents)
+    function norm(s) {
+      return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    }
+
+    // Get candidate tokens from a transit step to use for identifying the line
+    function transitStepLineCandidates(step) {
+      if (!step || !step.transit || !step.transit.line) return [];
+      const line = step.transit.line;
+      return [
+        line.name || null,
+        line.short_name || null,
+        (line.agency && line.agency.name) || null,
+        (line.vehicle && line.vehicle.name) || null,
+        (line.vehicle && line.vehicle.type) || null
+      ].filter(Boolean).map(norm);
+    }
+
+    // Get unique normalized line tokens used in the route
+    function getRouteLineNames(route) {
+      const names = new Set();
+      const steps = (route.legs && route.legs[0] && route.legs[0].steps) || [];
+      for (const step of steps) {
+        if (!step.transit) continue;
+        transitStepLineCandidates(step).forEach(n => names.add(n));
+      }
+      return Array.from(names);
+    }
+
+    // Detect common train-like vehicle.type tokens
+    function isTrainVehicleType(type) {
+      if (!type) return false;
+      return /train|rail|commuter|heavy_rail|metro|subway|s-bahn|rer|cercanias/i.test(type);
+    }
+
+    // Check whether a transit step looks like a train (vehicle.type OR line name tokens)
+    function transitStepIsTrain(step) {
+      if (!step || !step.transit || !step.transit.line) return false;
+      const vt = (step.transit.line.vehicle && step.transit.line.vehicle.type) || '';
+      if (vt && isTrainVehicleType(vt)) return true;
+      const tokens = transitStepLineCandidates(step);
+      return tokens.some(t => /cercanias|renfe|rodalies|metro|train|rail|tr(en)?|c1|c2|c3|r[0-9]|r1|r2|cerc/i.test(t));
+    }
+
+    // Strict: all transit steps (ignoring walking) must look like trains
+    function routeIsTrain(route) {
+      if (!route || !route.legs || !route.legs[0]) return false;
+      const steps = route.legs[0].steps || [];
+      for (const step of steps) {
+        if (!step.transit) continue; // walking is allowed
+        if (!transitStepIsTrain(step)) return false;
+      }
+      // If no transit steps found, it's not a transit route
+      const hasTransit = steps.some(s => s.transit);
+      return hasTransit;
+    }
+
+    // Lenient: the first transit step must be a train (feeder buses/walk allowed before/after)
+    function routeHasFirstTransitTrain(route) {
+      if (!route || !route.legs || !route.legs[0]) return false;
+      const steps = route.legs[0].steps || [];
+      for (const step of steps) {
+        if (!step.transit) continue;
+        return transitStepIsTrain(step);
+      }
+      return false; // no transit steps -> not a transit route
+    }
+
+    // -------------------- Filtering & building filtered result --------------------
+
+    // Return a shallow copy of the original DirectionsResult containing only routes
+    // that match the selected filter mode. Keeps most route/leg/step structure for debugging.
+    function buildFilteredResult(origResult, mode) {
+      const out = {
+        geocoded_waypoints: origResult.geocoded_waypoints || [],
+        routes: []
+      };
+
+      const predicate = (mode === 'strict') ? routeIsTrain : routeHasFirstTransitTrain;
+
+      (origResult.routes || []).forEach(route => {
+        if (!predicate(route)) return; // skip non-matching routes
+
+        // Optionally, include route line names for debugging
+        const routeCopy = Object.assign({}, route);
+        routeCopy._matched_line_tokens = getRouteLineNames(route);
+        out.routes.push(routeCopy);
+      });
+
+      return out;
+    }
+
+    // -------------------- Choose next route index among matching routes --------------------
+
+    // Choose the earliest route whose leg.departure_time >= departureDate (within tolerance)
+    // and that matches the selected filter mode. Returns -1 if none found.
+    function chooseNextTrainRouteIndex(directionsResult, departureDate, mode) {
+      const routes = directionsResult.routes || [];
+      let bestIdx = -1;
+      let bestTime = Infinity;
+      const nowMillis = departureDate.getTime();
+
+      for (let i = 0; i < routes.length; i++) {
+        const route = routes[i];
+        let matches = false;
+        if (mode === 'all') {
+          // all routes match
+          matches = true;
+        } else if (mode === 'strict') {
+          matches = routeIsTrain(route);
+        } else if (mode === 'lenient') {
+          matches = routeHasFirstTransitTrain(route);
+        }
+        if (!matches) continue;
+
+        const leg = route.legs && route.legs[0];
+        if (!leg || !leg.departure_time || !leg.departure_time.value) continue;
+        const dep = leg.departure_time.value;
+        if (!(dep instanceof Date)) continue;
+        const depMillis = dep.getTime();
+        // accept departures at or after now (tolerance - 5 sec)
+        if (depMillis + 5000 >= nowMillis && depMillis < bestTime) {
+          bestTime = depMillis;
+          bestIdx = i;
+        }
+      }
+      return bestIdx;
+    }
+
+    // -------------------- UI / display helpers --------------------
+
+    function showSelectedInfo(route, requestedDeparture, mode) {
+      if (!route || !route.legs || !route.legs[0]) {
+        document.getElementById('selected').textContent = 'No leg data';
+        return;
+      }
+      const leg = route.legs[0];
+      const lines = [];
+      lines.push('Selected filter mode: ' + mode);
+      lines.push('Leg start address: ' + (leg.start_address || '—'));
+      lines.push('Leg end address: ' + (leg.end_address || '—'));
+      lines.push('');
+      lines.push('Requested departure (now): ' + requestedDeparture.toLocaleString());
+      lines.push('**Leg departure_time**: ' + (leg.departure_time ? (leg.departure_time.text + ' — ' + leg.departure_time.value.toLocaleString()) : 'none'));
+      lines.push('**Leg arrival_time**: ' + (leg.arrival_time ? (leg.arrival_time.text + ' — ' + leg.arrival_time.value.toLocaleString()) : 'none'));
+      lines.push('');
+      lines.push('Steps (transit segments):');
+
+      leg.steps.forEach((step, idx) => {
+        if (step.transit) {
+          const t = step.transit;
+          const nameDisplay = t.line && (t.line.name || t.line.short_name) ? (t.line.name || t.line.short_name) : 'transit';
+          const tokens = transitStepLineCandidates(step).join(', ');
+          lines.push(`  Step ${idx}: ${nameDisplay} [tokens: ${tokens || '—'}]`);
+          lines.push(`    Departure: ${t.departure_time ? (t.departure_time.text + ' — ' + (t.departure_time.value instanceof Date ? t.departure_time.value.toLocaleString() : t.departure_time.value)) : 'none'}`);
+          lines.push(`    Arrival:   ${t.arrival_time ? (t.arrival_time.text + ' — ' + (t.arrival_time.value instanceof Date ? t.arrival_time.value.toLocaleString() : t.arrival_time.value)) : 'none'}`);
+          lines.push(`    From: ${t.departure_stop && t.departure_stop.name ? t.departure_stop.name : '—'}  →  To: ${t.arrival_stop && t.arrival_stop.name ? t.arrival_stop.name : '—'}`);
+          lines.push(`    Vehicle.type: ${(t.line && t.line.vehicle && t.line.vehicle.type) || '—'}`);
+        }
+      });
+
+      // Show matched line tokens for the whole route
+      const routeTokens = getRouteLineNames(route);
+      if (routeTokens.length) {
+        lines.push('');
+        lines.push('Route matched tokens: ' + routeTokens.join(', '));
+      }
+
+      document.getElementById('selected').innerHTML = lines.join('<br/>');
+      console.log('Selected route object:', route);
+    }
+
+    // Replacer for JSON.stringify to avoid circular refs and convert Dates to strings
+    function replacer(key, value) {
+      if (value instanceof Date) return value.toString();
+      if (typeof value === 'function') return undefined;
+      // remove map/marker references if any
+      if (key === 'map' || key === 'icon' || key === 'marker') return undefined;
+      return value;
+    }
+
+    function dumpFullResult(result) {
+      document.getElementById('result').textContent = JSON.stringify(result, replacer, 2);
+    }
+
+    // -------------------- Auto init loader for Google Maps --------------------
+  </script>
+
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap&libraries=places">
+  </script>
+</body>
+</html>
