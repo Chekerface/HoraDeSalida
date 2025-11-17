@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Próximo tren C1 — Simple</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --muted:#6b7180;
+      --accent:#0b5cff;
+      --success:#0b9d58;
+      --shadow: 0 6px 18px rgba(20,25,40,0.06);
+      --radius:12px;
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      color: #111827;
+    }
+    html,body {
+      height:100%;
+      margin:0;
+      background: var(--bg);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+    .wrap {
+      min-height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:28px;
+      box-sizing:border-box;
+    }
+    .card {
+      width: 620px;
+      background:var(--card);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:40px 42px;
+      text-align:left;
+    }
+    .header {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:8px;
+    }
+    .date {
+      font-size:25px;
+      color:var(--muted);
+    }
+    .clock {
+      font-size:40px;
+      font-weight:600;
+      color:var(--accent);
+      text-align:right;
+    }
+    .title {
+      margin-top:30px;
+      margin-bottom:14px;
+      font-size:16px;
+      font-weight:700;
+    }
+    .block {
+      background:#fbfdff;
+      border-radius:30px;
+      padding:30px 32px;
+      margin-bottom:30px;
+      border:1px solid rgba(10,20,60,0.03);
+    }
+    .label {
+      font-size:20px;
+      color:var(--muted);
+      margin-bottom:6px;
+    }
+    .value {
+      font-size:30px;
+      color:var(--muted);
+    }
+    .small {
+      font-size:15px;
+      color:var(--muted);
+      margin-top:8px;
+      text-align:center;
+    }
+    .loading {
+      color:var(--accent);
+      font-weight:600;
+    }
+    .muted-line {
+      color:var(--muted);
+      font-size:15px;
+    }
+    .fine {
+      font-size:35px;
+      color:#07102a;
+      font-weight:700;
+      margin-top:6px;
+    }
+    footer {
+      margin-top:10px;
+      text-align:center;
+      color:var(--muted);
+      font-size:15px;
+    }
+  </style>
+</head>
+<body>
+  <button id="close" style="position:absolute;top:10px;right:10px;padding:8px 12px;"> X </button>
+          <script>
+document.getElementById('close').addEventListener('click', function () {
+  
+  window.location.href = 'web2.html';
+});
+</script>
+  <div class="wrap">
+    <div class="card" role="main" aria-live="polite">
+      <div class="header">
+        <div class="date" id="date">—</div>
+        <div class="clock" id="clock">--:--</div>
+      </div>
+      // Escribe aquí tu Destino
+      <div class="title">Próximo tren C1 — dirección Fuengirola</div>
+
+      <div class="block" id="nextTrainBlock">
+        <div class="label">Próximo tren</div>
+        <div class="value" id="nextTrainLine">Cargando…</div>
+        <div class="fine" id="nextTrainTime">—</div>
+      </div>
+
+      <div class="block" id="followingTrainBlock">
+        <div class="label">Siguiente tren</div>
+        <div class="value" id="followingTrainLine">Cargando…</div>
+        <div class="fine" id="followingTrainTime">—</div>
+      </div>
+
+      <div class="small">Datos actualizados cada minuto ·</div>
+
+      <footer>Origen: La Colina — Destino: Fuengirola</footer>
+    </div>
+  </div>
+
+  <script>
+    // Coordenadas de la parada origen y la parada destino, por ejemplo: (Estación de cercanías La Colina -> Estación de cercanías Fuengirola)
+    const ORIGIN = { lat: 36.6419165, lng: -4.4926464 };
+    const DESTINATION = { lat: 36.541844, lng: -4.623845 };
+
+    let directionsService;
+
+    // DOM refs
+    const dateEl = document.getElementById('date');
+    const clockEl = document.getElementById('clock');
+    const nextLineEl = document.getElementById('nextTrainLine');
+    const nextTimeEl = document.getElementById('nextTrainTime');
+    const follLineEl = document.getElementById('followingTrainLine');
+    const follTimeEl = document.getElementById('followingTrainTime');
+
+    // Spanish formatters (Madrid timezone)
+    const dateFormatter = new Intl.DateTimeFormat('es-ES', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'Europe/Madrid'
+    });
+    const timeFormatter = new Intl.DateTimeFormat('es-ES', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/Madrid'
+    });
+    const datetimeFormatter = new Intl.DateTimeFormat('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/Madrid'
+    });
+
+    function updateClockAndDate() {
+      const now = new Date();
+      dateEl.textContent = capitalizeFirst(dateFormatter.format(now));
+      clockEl.textContent = timeFormatter.format(now);
+    }
+
+    function capitalizeFirst(s){
+      if(!s) return s;
+      return s.charAt(0).toUpperCase()+s.slice(1);
+    }
+
+    // ------------------- Helpers (strict HEAVY_RAIL only) -------------------
+
+    function norm(s) { return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+
+    // Strict check: only accept explicit HEAVY_RAIL vehicle.type
+    function isHeavyRailType(type) {
+      if (!type) return false;
+      try {
+        return String(type).toUpperCase() === 'HEAVY_RAIL';
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // Return true only if the transit step explicitly has line.vehicle.type === HEAVY_RAIL
+    function transitStepIsHeavyRail(step) {
+      if (!step || !step.transit || !step.transit.line) return false;
+      const vehicle = step.transit.line.vehicle;
+      if (!vehicle || typeof vehicle.type === 'undefined' || vehicle.type === null) return false;
+      return isHeavyRailType(vehicle.type);
+    }
+
+    // Route qualifies only if all transit segments (if any) are HEAVY_RAIL.
+    // Walking segments are allowed.
+    function routeIsHeavyRail(route) {
+      if (!route || !route.legs || !route.legs[0]) return false;
+      const steps = route.legs[0].steps || [];
+      let hasTransit = false;
+      for (const step of steps) {
+        if (!step.transit) continue; // walking allowed
+        hasTransit = true;
+        if (!transitStepIsHeavyRail(step)) return false;
+      }
+      return hasTransit; // only consider routes that have transit and all transit steps are heavy rail
+    }
+
+    function firstTransitStep(route) {
+      if (!route || !route.legs || !route.legs[0]) return null;
+      // Ensure the whole route qualifies as heavy-rail (strict)
+      if (!routeIsHeavyRail(route)) return null;
+      const steps = route.legs[0].steps || [];
+      for (const step of steps) {
+        if (step.transit && transitStepIsHeavyRail(step)) return step;
+      }
+      return null;
+    }
+
+    function toDateMaybe(val) {
+      if (val instanceof Date) return val;
+      if (typeof val === 'string' || typeof val === 'number') {
+        const d = new Date(val);
+        if (!isNaN(d)) return d;
+      }
+      return null;
+    }
+
+    // ------------------- Core logic: find next two strict heavy-rail departures -------------------
+
+    function pickNextTwoStrictTrains(directionsResult, firstRefDate) {
+      const routes = (directionsResult && directionsResult.routes) || [];
+      const candidates = [];
+      for (const route of routes) {
+        if (!routeIsHeavyRail(route)) continue;
+        const leg = route.legs && route.legs[0];
+        if (!leg || !leg.departure_time || !leg.departure_time.value) continue;
+        const dep = toDateMaybe(leg.departure_time.value);
+        if (!dep) continue;
+        candidates.push({ route, dep });
+      }
+      candidates.sort((a,b)=>a.dep - b.dep);
+
+      const nowMillis = firstRefDate.getTime();
+      let first = null;
+      for (const c of candidates) {
+        if (c.dep.getTime() + 5000 >= nowMillis) {
+          first = c;
+          break;
+        }
+      }
+      if (!first) return { first:null, second:null };
+
+      let second = null;
+      for (const c of candidates) {
+        if (c.dep.getTime() > first.dep.getTime()) { second = c; break; }
+      }
+      return { first, second };
+    }
+
+    // helper to generate display string for a route's first heavy-rail transit step
+    function describeRouteLineAndDest(route) {
+      const step = firstTransitStep(route);
+      const line = step && step.transit && (step.transit.line && (step.transit.line.short_name || step.transit.line.name));
+      const arrivalStop = step && step.transit && (step.transit.arrival_stop && step.transit.arrival_stop.name);
+      const dest = route.legs && route.legs[0] && (route.legs[0].end_address || arrivalStop);
+      const lineStr = line ? String(line) : 'Tren (HEAVY_RAIL)';
+      return { lineStr };
+    }
+
+    function formatLegTime(date) {
+      if(!date) return '—';
+      return datetimeFormatter.format(date);
+    }
+
+    // ------------------- Query and update UI -------------------
+
+    function queryAndUpdate(referenceDate) {
+      if (!directionsService) {
+        console.warn('DirectionsService not ready');
+        showLoadingState();
+        return;
+      }
+
+      const req = {
+        origin: ORIGIN,
+        destination: DESTINATION,
+        travelMode: google.maps.TravelMode.TRANSIT,
+        transitOptions: { departureTime: referenceDate },
+        provideRouteAlternatives: true
+      };
+
+      directionsService.route(req, (result, status) => {
+        if (status !== google.maps.DirectionsStatus.OK) {
+          console.error('Directions request failed:', status);
+          nextLineEl.textContent = 'Error fetching routes';
+          nextTimeEl.textContent = String(status);
+          follLineEl.textContent = '-';
+          follTimeEl.textContent = '-';
+          return;
+        }
+
+        const picks = pickNextTwoStrictTrains(result, referenceDate);
+        if (!picks.first) {
+          nextLineEl.textContent = 'No hay trenes';
+          nextTimeEl.textContent = 'Intenta más tarde';
+          follLineEl.textContent = '-';
+          follTimeEl.textContent = '-';
+          return;
+        }
+
+        const next = picks.first;
+        const nextInfo = describeRouteLineAndDest(next.route);
+        nextLineEl.textContent = `${nextInfo.lineStr} → Fuengirola`;
+        nextTimeEl.textContent = `Salida: ${formatLegTime(next.dep)}`;
+
+        if (picks.second) {
+          const foll = picks.second;
+          const follInfo = describeRouteLineAndDest(foll.route);
+          follLineEl.textContent = `${follInfo.lineStr} → Fuengirola`;
+          follTimeEl.textContent = `Salida: ${formatLegTime(foll.dep)}`;
+        } else {
+          follLineEl.textContent = 'No disponible en resultados actuales';
+          follTimeEl.textContent = '—';
+        }
+      });
+    }
+
+    function showLoadingState() {
+      nextLineEl.textContent = 'Cargando…';
+      nextTimeEl.textContent = '';
+      follLineEl.textContent = 'Cargando…';
+      follTimeEl.textContent = '';
+    }
+
+    function fullUpdate() {
+      updateClockAndDate();
+      showLoadingState();
+      const now = new Date();
+      queryAndUpdate(now);
+    }
+
+    // ------------------- Initialization -------------------
+    function initMap() {
+      directionsService = new google.maps.DirectionsService();
+      updateClockAndDate();
+      fullUpdate();
+      setInterval(fullUpdate, 60 * 1000);
+      setInterval(updateClockAndDate, 1000);
+    }
+
+    // Load handling: show initial placeholders
+    showLoadingState();
+  </script>
+
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap&libraries=places">
+  </script>
+</body>
+</html>
