@@ -1,0 +1,40 @@
+Título del Proyecto: Hora de Salida
+Lenguaje del Proyecto: HTML, CSS y JavaScript.
+Objetivo del proyecto: Crear un panel con las salidas de los transportes públicos que me son relevantes. 
+Necesario: API de Google con Directions API y Google Maps Java Scrip API activadas.
+Opcional: Hardware (Tablet con >2 GB de RAM, opción a instalar Fully Kiosk de la App Store y enchufe con minutero o inteligente).
+
+Descripción del proyecto en github:
+  Web2.html: Este html tiene una pantalla básica con la fecha y hora actual para Madrid. Además esta pantalla incluye los botones para que el usuario seleccione qué transporte mostrar. 
+  Tren_Malaga.html: Esta pantalla muestra los dos próximos trenes de cercanías en dirección Málaga. 
+  Tren_Fuengirola.html: Esta pantalla muestra los dos próximos trenes de cercanías en dirección Fuengirola. 
+  Bus_Malaga.html: Esta pantalla muestra los dos próximos buses en dirección Málaga (Puerta Blanca). 
+  Bus_Benalmádena.html: Esta pantalla muestra los dos próximos buses en dirección Benalmádena (Yucas Mare). 
+  Bus_Dulceypan.html: Este es *EL EJEMPLO PARA USAR*. Está censurado e incluye la parada a usar. 
+
+Pasos para implementar el github:
+  1. Crea tu API KEY en google. 
+  2. Copia este proyecto y adáptalo a tus necesidades:
+    2.1 Cambia los botones
+    2.2 Utiliza los html correspondientes al transporte que quieres que devuelva. Si es cercanía usa Tren_Malaga o Tren_Fuengirola ya que están filtrados para solo retornar trenes.
+    2.3 Como origen debes colocar la parada de salida del transporte.
+    2.4 Como destino debes colocar la parada final del transporte. ¡¡¡Ten en cuenta que el html del bus tiene un filtro para no retornar ningún resultado con más de 5 minutos caminando.!!!
+    2.5 Recuerda que las página del proyecto se hacen referencias unas a otras. Y el html espera que se encuentren en la misma carpeta, si modificas cualquier nombre recuerda modificar los href correspondientes.
+  3. Mueve los archivos html a la Tablet. 
+  4. Instala fully Kiosk en la Tablet y utiliza web2.html como web principal. 
+  5. Conecta la tablet a la luz con un enchufe inteligente o con minutero para asegurarte de que la batería esté siempre en los márgenes ideales (entre 30% y 80%).
+
+Q&A 
+Q: ¿Por qué has hecho que el origen sea la estación / parada y no tu casa?
+A: No hay ninguna API que te retorne la frecuencia del transporte público ni la API de Renfe ni ninguna de las de Google. Por ello he decidido engañarle a la API de directions y esta es la forma más fácil.
+
+Q: ¿Por qué lo has hecho todo con la API de Google?
+A: Era lo más fácil, cuando deje de funcionar ya exploraré utilizar python. Por ahora esto es sencillo y con mucha eficiencia. 
+
+Q: ¿Por qué vas abriendo y cerrando pantallas en vez de tenerlas cargadas? // ¿Por qué no has hecho todo el html en uno solo?
+A: Es más caro (por las solicitudes a la API) y al ser pantallas con scripts super sencillitos apenas hay que esperar unos segundos a que cargue.
+
+Q: ¿Por qué se llama web2? // ¿Por qué hay funciones que no se utilizan? 
+A: Me dio pereza cambiarlo. Soy humana. Funciona y ya. Si me limpias el código pásamelo. 
+
+Cualquier otra pregunta a mi Linkedin :) También tengo Stack Overflow. A ver si me encuentras. 
