@@ -18,7 +18,7 @@ Pasos para implementar el github:
     2.1 Cambia los botones
     2.2 Utiliza los html correspondientes al transporte que quieres que devuelva. Si es cercanía usa Tren_Malaga o Tren_Fuengirola ya que están filtrados para solo retornar trenes.
     2.3 Como origen debes colocar la parada de salida del transporte.
-    2.4 Como destino debes colocar la parada final del transporte. ¡¡¡Ten en cuenta que el html del bus tiene un filtro para no retornar ningún resultado con más de 5 minutos caminando.!!!
+    2.4 Como destino debes colocar la parada final del transporte. Si lo que quieres es ver a que hora salir de casa - ¡¡¡Ten en cuenta que el html del bus tiene un filtro para no retornar ningún resultado con más de 5 minutos caminando.!!!
     2.5 Recuerda que las página del proyecto se hacen referencias unas a otras. Y el html espera que se encuentren en la misma carpeta, si modificas cualquier nombre recuerda modificar los href correspondientes.
   3. Mueve los archivos html a la Tablet. 
   4. Instala fully Kiosk en la Tablet y utiliza web2.html como web principal. 
