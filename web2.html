@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Madrid Date/Time + Transport Buttons</title>
+  <style>
+    :root{
+          --font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          --label-min-width: 120px;        /* minimum width for the row label */
+          --label-font-size: 35px;         /* label font size */
+          --btn-font-size: 40px;           /* button text size */
+          --btn-padding-vertical: 30px;    /* button vertical padding */
+          --btn-padding-horizontal: 35px;  /* button horizontal padding */
+          --btn-gap: 20px;                 /* gap between buttons */
+          --row-gap: 20px;                 /* gap between label and buttons */
+        }
+
+    body{
+      margin:40px;
+      color:#222;
+      font-family: var(--font-family);
+    }
+    .datetime{margin-bottom:18px}
+    .date{font-size:40px;font-weight:600;text-align:center}
+    .time{font-size:100px;font-weight:700;color:#0b63ff;text-align:center}
+    /* Row: center everything horizontally, align items vertically in the middle */
+    .row{
+      display:flex;
+      align-items:center;
+      justify-content:center;   /* <-- centers label + buttons on the row */
+      gap:var(--row-gap);
+      margin:20px 0;
+    }
+    .label{
+      min-width:var(--label-min-width);
+      font-weight:600;
+      font-size:var(--label-font-size);
+      text-align:center;        /* <-- centers the label text */
+    }
+    /* Buttons container: center the button group and wrap if needed */
+    .buttons{
+      display:flex;
+      gap:var(--btn-gap);
+      flex-wrap:wrap;
+      justify-content:center;   /* <-- centers buttons inside the buttons container */
+    }
+    /* Button styling: increased size via variables */
+    button.link-btn{
+      background:#0b63ff;
+      color:#fff;
+      border:0;
+      padding:var(--btn-padding-vertical) var(--btn-padding-horizontal);
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:700;
+      font-size:var(--btn-font-size);
+      line-height:1;
+      text-align:center;
+    }
+    button.link-btn.secondary{background:#444}
+    button.link-btn:active{transform:translateY(1px)}
+    .note{margin-top:16px;font-size:10px;color:#555}
+  </style>
+</head>
+<body>
+  <div class="datetime" aria-live="polite">
+    <div id="date" class="date">Loading date...</div>
+    <div id="time" class="time">--:--</div>
+  </div>
+
+  <div class="transport">
+    <div class="row" role="group" aria-label="Bus">
+      <div class="label">Bus</div>
+      <div class="buttons">
+        <button id="Dulcypan" class="link-btn" >Dulcypan</button>
+
+        <button id="bus_benalmadena" class="link-btn" >Benalmádena</button>
+
+        <button id="bus_malaga" class="link-btn" >Málaga</button>
+       <script>
+document.getElementById('bus_benalmadena').addEventListener('click', function () {
+  // Option A: same-tab navigation (recommended for straightforward flow)
+  window.location.href = 'Bus_Benalmadena.html';
+});
+document.getElementById('Dulcypan').addEventListener('click', function () {
+  // Option A: same-tab navigation (recommended for straightforward flow)
+  window.location.href = 'Bus_Dulcypan.html';
+});
+document.getElementById('bus_malaga').addEventListener('click', function () {
+  // Option A: same-tab navigation (recommended for straightforward flow)
+  window.location.href = 'Bus_Malaga.html';
+});
+</script>
+      </div>
+    </div>
+
+    <div class="row" role="group" aria-label="Tren">
+      <div class="label">Tren</div>
+      <div class="buttons">
+        <button id="tren-fuengirola" class="link-btn secondary">Fuengirola</button>
+        <button id="tren-malaga" class="link-btn secondary">Málaga</button>
+        <script>
+document.getElementById('tren-malaga').addEventListener('click', function () {
+  // Option A: same-tab navigation (recommended for straightforward flow)
+  window.location.href = 'Tren_malaga.html';
+});
+document.getElementById('tren-fuengirola').addEventListener('click', function () {
+  // Option A: same-tab navigation (recommended for straightforward flow)
+  window.location.href = 'Tren_fuengirola.html';
+});
+</script>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+  </div>
+
+  <script>
+
+
+    // Update the displayed date and time (Madrid)
+    function updateDateTime() {
+      const now = new Date();
+
+      const parts = new Intl.DateTimeFormat('es-ES', {
+        timeZone: 'Europe/Madrid',
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(now).reduce((m, p) => { m[p.type] = p.value; return m; }, {});
+
+      // numeric day & year via format to ensure correct values across midnight
+      const day2 = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit' }).format(now);
+      const year = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', year: 'numeric' }).format(now);
+      function capitalizeFirst(s){
+        if(!s) return s;
+      return s.charAt(0).toUpperCase()+s.slice(1);
+      }
+      const weekday = capitalizeFirst(parts.weekday || '');
+      const monthLower = parts.month || '';
+
+      const dateStr = `${weekday}, ${day2} ${monthLower} ${year}`;
+      const timeStr = `${parts.hour || '00'}:${parts.minute || '00'}`;
+
+      document.getElementById('date').textContent = dateStr;
+      document.getElementById('time').textContent = timeStr;
+    }
+
+    // Start
+    updateDateTime();
+    setInterval(updateDateTime, 1000);
+  </script>
+</body>
+</html>
