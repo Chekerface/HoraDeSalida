@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Próximo Bus — Simple</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --muted:#6b7180;
+      --accent:#0b5cff;
+      --shadow: 0 6px 18px rgba(20,25,40,0.06);
+      --radius:12px;
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      color: #111827;
+    }
+    html,body {
+      height:100%;
+      margin:0;
+      background: var(--bg);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+    .wrap {
+      min-height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:28px;
+      box-sizing:border-box;
+    }
+    .card {
+      width: 620px;
+      background:var(--card);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:40px 42px;
+      text-align:left;
+    }
+    .header {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:8px;
+    }
+    .date {
+      font-size:25px;
+      color:var(--muted);
+    }
+    .clock {
+      font-size:40px;
+      font-weight:600;
+      color:var(--accent);
+      text-align:right;
+    }
+    .title {
+      margin-top:30px;
+      margin-bottom:14px;
+      font-size:16px;
+      font-weight:700;
+    }
+    .block {
+      background:#fbfdff;
+      border-radius:30px;
+      padding:30px 32px;
+      margin-bottom:30px;
+      border:1px solid rgba(10,20,60,0.03);
+    }
+    .label {
+      font-size:20px;
+      color:var(--muted);
+      margin-bottom:6px;
+    }
+    .value {
+      font-size:30px;
+      color:var(--muted);
+    }
+    .small {
+      font-size:15px;
+      color:var(--muted);
+      margin-top:8px;
+      text-align:center;
+    }
+    .loading {
+      color:var(--accent);
+      font-weight:600;
+    }
+    .muted-line {
+      color:var(--muted);
+      font-size:15px;
+    }
+    .fine {
+      font-size:35px;
+      color:#07102a;
+      font-weight:700;
+      margin-top:6px;
+    }
+    footer {
+      margin-top:10px;
+      text-align:center;
+      color:var(--muted);
+      font-size:15px;
+    }
+  </style>
+</head>
+<body>
+  <button id="close" style="position:absolute;top:10px;right:10px;padding:8px 12px;"> X </button>
+  <script>
+    document.getElementById('close').addEventListener('click', function () {
+      window.location.href = 'web2.html';
+    });
+  </script>
+
+  <div class="wrap">
+    <div class="card" role="main" aria-live="polite">
+      <div class="header">
+        <div class="date" id="date">—</div>
+        <div class="clock" id="clock">--:--</div>
+      </div>
+
+      <div class="title">Próximo Bus — dirección Dulcypan</div>
+
+      <div class="block" id="nextBusBlock">
+        <div class="label">Próximo Bus</div>
+        <div class="value" id="nextBusLine">Cargando…</div>
+        <div class="fine" id="nextBusTime">—</div>
+      </div>
+
+      <div class="block" id="followingBusBlock">
+        <div class="label">Siguiente Bus</div>
+        <div class="value" id="followingBusLine">Cargando…</div>
+        <div class="fine" id="followingBusTime">—</div>
+      </div>
+
+      <div class="small">Datos actualizados cada minuto ·</div>
+
+      <footer>Origen: Casa — Destino: Dulcypan</footer>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Configuration ----------
+    // COMPLETA CON TUS DATOS
+    const ORIGIN = { lat: X, lng: Y};
+    const DESTINATION = { lat: 36.628133, lng: -4.500454 };
+    const MAX_WALK_SECONDS = 5 * 60; // 5 minutes de andar como máximo RESTRICCIÓN
+    const DUPLICATE_TIME_TOLERANCE_MS = 60 * 1000; // ELIMINA TRANSPORTE SI HAY UNA DIFERENCIA DE SOLO UN MINUTO CON LOS MISMOS DATOS 
+    let directionsService;
+
+    // DOM refs
+    const dateEl = document.getElementById('date');
+    const clockEl = document.getElementById('clock');
+    const nextLineEl = document.getElementById('nextBusLine');
+    const nextTimeEl = document.getElementById('nextBusTime');
+    const follLineEl = document.getElementById('followingBusLine');
+    const follTimeEl = document.getElementById('followingBusTime');
+
+    // Formatters
+    const dateFormatter = new Intl.DateTimeFormat('es-ES', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+      timeZone: 'Europe/Madrid'
+    });
+    const timeFormatter = new Intl.DateTimeFormat('es-ES', {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+      timeZone: 'Europe/Madrid'
+    });
+    const datetimeFormatter = new Intl.DateTimeFormat('es-ES', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      hour12: false, timeZone: 'Europe/Madrid'
+    });
+
+    function updateClockAndDate() {
+      const now = new Date();
+      dateEl.textContent = capitalizeFirst(dateFormatter.format(now));
+      clockEl.textContent = timeFormatter.format(now);
+    }
+
+    function capitalizeFirst(s){
+      if(!s) return s;
+      return s.charAt(0).toUpperCase()+s.slice(1);
+    }
+
+    // ---------- Helpers to enforce bus-only and walking limit ----------
+
+    function isBusType(type) {
+      if (!type) return false;
+      try { return String(type).toUpperCase() === 'BUS'; }
+      catch (e) { return false; }
+    }
+
+    function transitStepIsBus(step) {
+      if (!step || !step.transit || !step.transit.line) return false;
+      const vehicle = step.transit.line.vehicle;
+      if (!vehicle || typeof vehicle.type === 'undefined' || vehicle.type === null) return false;
+      return isBusType(vehicle.type);
+    }
+
+    function walkingSegmentsUnderLimit(route, maxSeconds = MAX_WALK_SECONDS) {
+      if (!route || !route.legs || !route.legs[0]) return false;
+      const steps = route.legs[0].steps || [];
+      for (const step of steps) {
+        const travelMode = step.travel_mode || step.travelMode || null;
+        if (travelMode && String(travelMode).toUpperCase() === 'WALKING') {
+          const dur = step.duration && (typeof step.duration.value === 'number' ? step.duration.value : parseFloat(step.duration.value || 0));
+          if (!dur || isNaN(dur)) return false;
+          if (dur > maxSeconds) return false;
+        }
+      }
+      return true;
+    }
+
+    function routeIsStrictBus(route) {
+      if (!route || !route.legs || !route.legs[0]) return false;
+      const steps = route.legs[0].steps || [];
+      let hasTransit = false;
+      for (const step of steps) {
+        const travelMode = step.travel_mode || step.travelMode || null;
+        if (travelMode && String(travelMode).toUpperCase() === 'WALKING') {
+          const dur = step.duration && (typeof step.duration.value === 'number' ? step.duration.value : parseFloat(step.duration.value || 0));
+          if (!dur || isNaN(dur) || dur > MAX_WALK_SECONDS) return false;
+          continue;
+        }
+        if (step.transit) {
+          hasTransit = true;
+          if (!transitStepIsBus(step)) return false;
+        }
+      }
+      return hasTransit;
+    }
+
+    function firstTransitStep(route) {
+      if (!route || !route.legs || !route.legs[0]) return null;
+      if (!routeIsStrictBus(route)) return null;
+      const steps = route.legs[0].steps || [];
+      for (const step of steps) {
+        if (step.transit && transitStepIsBus(step)) return step;
+      }
+      return null;
+    }
+
+    function toDateMaybe(val) {
+      if (val === undefined || val === null) return null;
+      if (typeof val === 'object' && 'value' in val) {
+        return toDateMaybe(val.value);
+      }
+      const num = Number(val);
+      if (!isNaN(num)) {
+        if (num > 1e12) return new Date(num);
+        if (num > 1e9) return new Date(num * 1000);
+        const d = new Date(num);
+        if (!isNaN(d)) return d;
+      }
+      const d2 = new Date(val);
+      return isNaN(d2) ? null : d2;
+    }
+  function safeName(val) {
+  if (!val) return '';
+  if (typeof val === 'object' && 'name' in val) return String(val.name || '');
+  return String(val);
+}
+  function truncate(s, n = 48) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+    // ---------- Identity & duplicate detection ----------
+    function getRouteIdentity(route) {
+      // Attempt to build a stable identity object for route's first transit step
+      const step = firstTransitStep(route);
+      let lineId = null;
+      let lineName = null;
+      if (step && step.transit && step.transit.line) {
+        const line = step.transit.line;
+        // prefer explicit id if available
+        lineId = line.id || null;
+        // build a fallback key from agency + short_name/name
+        const shortName = line.short_name || '';
+        const name = line.name || '';
+        const agency = (line.agency && (line.agency.name || line.agency)) || '';
+        lineName = (shortName || name || '').toString();
+        if (!lineId) {
+          // combine agency + shortName/name to reduce collisions
+          lineId = `${agency}::${shortName || name}`;
+        }
+      } else {
+        lineId = 'unknown-line';
+        lineName = 'BUS';
+      }
+      const departureStop = step.transit.departure_stop && safeName(step.transit.departure_stop.name);
+      const arrivalStop = step && step.transit && (step.transit.arrival_stop && (step.transit.arrival_stop.name || step.transit.arrival_stop)) ;
+      const dest = (route.legs && route.legs[0] && (route.legs[0].end_address || arrivalStop)) || 'Destino';
+      return { lineId: String(lineId), lineName: String(lineName || ''), dest: String(dest), departureStop: departureStop };
+    }
+
+    function areCandidatesEqual(a, b, toleranceMs = DUPLICATE_TIME_TOLERANCE_MS) {
+      if (!a || !b) return false;
+      const idA = getRouteIdentity(a.route);
+      const idB = getRouteIdentity(b.route);
+      const sameLine = idA.lineId === idB.lineId;
+      const sameDest = (idA.dest || '').toLowerCase() === (idB.dest || '').toLowerCase();
+      const timeDiff = Math.abs(a.dep.getTime() - b.dep.getTime());
+      const timeClose = timeDiff <= toleranceMs;
+      return sameLine && sameDest && timeClose;
+    }
+
+    // ---------- Selection: pick next two buses (dedup second) ----------
+    function pickNextTwoStrictBuses(directionsResult, referenceDate) {
+      const routes = (directionsResult && directionsResult.routes) || [];
+      const candidates = [];
+      for (const route of routes) {
+        if (!routeIsStrictBus(route)) continue;
+        const leg = route.legs && route.legs[0];
+        if (!leg) continue;
+        const depVal = (leg.departure_time && (leg.departure_time.value || leg.departure_time.text)) || leg.departure_time || null;
+        const dep = toDateMaybe(depVal);
+        if (!dep) continue;
+        candidates.push({ route, dep });
+      }
+
+      candidates.sort((a,b)=>a.dep - b.dep);
+      const nowMillis = referenceDate.getTime();
+      let first = null;
+      for (const c of candidates) {
+        if (c.dep.getTime() + 5000 >= nowMillis) {
+          first = c;
+          break;
+        }
+      }
+      if (!first) return { first: null, second: null };
+
+      let second = null;
+      for (const c of candidates) {
+        if (c.dep.getTime() <= first.dep.getTime()) continue; // must be after first
+        // skip if duplicate of first
+        if (areCandidatesEqual(first, c)) {
+          console.debug('Skipped duplicate candidate for second:', getRouteIdentity(c.route), 'dep:', c.dep);
+          continue;
+        }
+        second = c;
+        break;
+      }
+
+      return { first, second };
+    }
+
+    function formatLegTime(date) {
+      if(!date) return '—';
+      return datetimeFormatter.format(date);
+    }
+
+    function describeRouteLineAndDest(route) {
+      const step = firstTransitStep(route);
+      if (!step || !step.transit || !step.transit.line) return { lineStr: 'BUS', dest: (route.legs && route.legs[0] && route.legs[0].end_address) || 'Destino' };
+      const line = step.transit.line.short_name || step.transit.line.name || (step.transit.line.vehicle && step.transit.line.vehicle.type);
+      const arrivalStop = step.transit.arrival_stop && (step.transit.arrival_stop.name || step.transit.arrival_stop);
+      const departureStop = step.transit.departure_stop && safeName(step.transit.departure_stop.name);
+      const dest = route.legs && route.legs[0] && (route.legs[0].end_address || arrivalStop || 'Destino');
+      return { lineStr: String(line || 'BUS'), dest: String(dest), departureStop: String(departureStop)};
+    }
+
+    // ---------- Query and update UI ----------
+    function showLoadingState() {
+      nextLineEl.textContent = 'Cargando…';
+      nextTimeEl.textContent = '';
+      follLineEl.textContent = 'Cargando…';
+      follTimeEl.textContent = '';
+    }
+
+    function queryAndUpdate(referenceDate) {
+      if (!directionsService) {
+        console.warn('DirectionsService not ready');
+        showLoadingState();
+        return;
+      }
+
+      const req = {
+        origin: ORIGIN,
+        destination: DESTINATION,
+        travelMode: google.maps.TravelMode.TRANSIT,
+        transitOptions: {
+          departureTime: referenceDate,
+          modes: [google.maps.TransitMode.BUS]
+        },
+        provideRouteAlternatives: true
+      };
+
+      directionsService.route(req, (result, status) => {
+        if (status !== google.maps.DirectionsStatus.OK && status !== 'OK') {
+          console.error('Directions request failed:', status);
+          nextLineEl.textContent = 'Error fetching routes';
+          nextTimeEl.textContent = String(status);
+          follLineEl.textContent = '-';
+          follTimeEl.textContent = '-';
+          return;
+        }
+
+        const picks = pickNextTwoStrictBuses(result, referenceDate);
+        if (!picks.first) {
+          nextLineEl.textContent = 'No hay buses que cumplan condiciones';
+          nextTimeEl.textContent = 'Intenta más tarde';
+          follLineEl.textContent = '-';
+          follTimeEl.textContent = '-';
+          return;
+        }
+
+        const next = picks.first;
+        const nextInfo = describeRouteLineAndDest(next.route);
+        nextLineEl.textContent = `${nextInfo.departureStop} ${nextInfo.lineStr} → Dulcypan`;
+        nextTimeEl.textContent = `Salida: ${formatLegTime(next.dep)}`;
+
+        if (picks.second) {
+          const foll = picks.second;
+          const follInfo = describeRouteLineAndDest(foll.route);
+          follLineEl.textContent = `${follInfo.departureStop} ${follInfo.lineStr} → Dulcypan`;
+          follTimeEl.textContent = `Salida: ${formatLegTime(foll.dep)}`;
+        } else {
+          follLineEl.textContent = 'No disponible en resultados actuales';
+          follTimeEl.textContent = '—';
+        }
+      });
+    }
+
+    function fullUpdate() {
+      updateClockAndDate();
+      showLoadingState();
+      const now = new Date();
+      queryAndUpdate(now);
+    }
+
+    // ---------- Initialization ----------
+    function initMap() {
+      directionsService = new google.maps.DirectionsService();
+      updateClockAndDate();
+      fullUpdate();
+      setInterval(fullUpdate, 60 * 1000);
+      setInterval(updateClockAndDate, 1000);
+    }
+
+    // initial UI
+    showLoadingState();
+  </script>
+
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap&libraries=places">
+  </script>
+</body>
+</html>
+
